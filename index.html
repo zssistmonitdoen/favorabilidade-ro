@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Favorabilidade à ferrugem asiática da soja</title>
+<meta name="description" content="Previsão diária da favorabilidade climática à ferrugem asiática da soja, com consulta por ponto.">
+<link rel="stylesheet" href="lib/leaflet.css">
+<style>
+  :root {
+    --tinta: #1f2a24; --tinta-2: #55615a; --linha: #dfe4e0; --fundo: #f6f7f5; --cartao: #ffffff;
+    --baixa: #97C459; --media: #EF9F27; --alta: #A32D2D; --acento: #2f5d46;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--tinta); background: var(--fundo); line-height: 1.45; }
+  header { background: var(--acento); color: #fff; padding: 18px 24px; }
+  header h1 { margin: 0; font-size: 1.35rem; font-weight: 650; letter-spacing: .01em; }
+  header p { margin: 4px 0 0; font-size: .92rem; opacity: .9; }
+  main { max-width: 1280px; margin: 0 auto; padding: 18px 16px 8px; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 18px; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  .cartao { background: var(--cartao); border: 1px solid var(--linha); border-radius: 10px; padding: 14px 16px; }
+  h2 { font-size: 1.02rem; margin: 0 0 10px; }
+  #dias { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  #dias button { border: 1px solid var(--linha); background: #fff; color: var(--tinta); border-radius: 999px; padding: 5px 11px; font-size: .85rem; cursor: pointer; }
+  #dias button.ativo { background: var(--acento); border-color: var(--acento); color: #fff; }
+  #mapa { height: 560px; border-radius: 8px; border: 1px solid var(--linha); }
+  @media (max-width: 900px) { #mapa { height: 420px; } }
+  .legenda { display: flex; align-items: center; gap: 10px; margin-top: 10px; font-size: .82rem; color: var(--tinta-2); flex-wrap: wrap; }
+  .barra { position: relative; width: 260px; height: 12px; border-radius: 3px; background: linear-gradient(90deg, var(--baixa), var(--media), var(--alta)); }
+  .barra span { position: absolute; top: -2px; width: 1px; height: 16px; background: #333; }
+  .rotulos { position: relative; width: 260px; height: 14px; font-size: .74rem; }
+  .rotulos span { position: absolute; transform: translateX(-50%); }
+  form { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: end; }
+  label { font-size: .8rem; color: var(--tinta-2); display: block; margin-bottom: 3px; }
+  input { width: 100%; padding: 7px 9px; border: 1px solid var(--linha); border-radius: 6px; font-size: .95rem; }
+  .botao { background: var(--acento); color: #fff; border: 0; border-radius: 6px; padding: 8px 14px; font-size: .92rem; cursor: pointer; }
+  .botao.sec { background: #fff; color: var(--acento); border: 1px solid var(--acento); }
+  .acoes { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+  .dica { font-size: .84rem; color: var(--tinta-2); margin: 8px 0 0; }
+  #resultado { margin-top: 14px; }
+  #resumo { font-size: .92rem; margin-bottom: 6px; }
+  #curva svg { width: 100%; height: auto; display: block; }
+  table { width: 100%; border-collapse: collapse; font-size: .84rem; margin-top: 8px; }
+  th, td { text-align: right; padding: 4px 6px; border-bottom: 1px solid var(--linha); }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--tinta-2); font-weight: 600; }
+  tr.prev td { background: #fafbf9; }
+  td:first-child { white-space: nowrap; }
+  .chip { display: inline-block; min-width: 52px; text-align: center; padding: 1px 6px; border-radius: 999px; color: #fff; font-size: .76rem; }
+  .aviso { font-size: .82rem; color: var(--tinta-2); border-left: 3px solid var(--media); padding: 4px 10px; margin-top: 12px; background: #fffaf2; }
+  section.sobre { max-width: 1280px; margin: 0 auto; padding: 8px 16px 28px; }
+  section.sobre .cartao p, section.sobre .cartao li { font-size: .9rem; }
+  footer { text-align: center; font-size: .78rem; color: var(--tinta-2); padding: 0 16px 24px; }
+  .erro { color: #a32d2d; font-size: .88rem; }
+  .opcao { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; font-size: .84rem; color: var(--tinta-2); cursor: pointer; }
+  .opcao input { width: auto; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Favorabilidade climática à ferrugem asiática da soja — <span class="uf-nome"></span></h1>
+  <p id="sub">Carregando a previsão...</p>
+</header>
+
+<main>
+  <div class="cartao">
+    <h2>Mapa da previsão</h2>
+    <div id="dias"></div>
+    <div id="mapa" aria-label="Mapa de favorabilidade"></div>
+    <div class="legenda">
+      <div>
+        <div class="barra"><span style="left:25%"></span><span style="left:75%"></span></div>
+        <div class="rotulos"><span style="left:0%">0</span><span style="left:25%">0,25</span><span style="left:75%">0,75</span><span style="left:100%">1</span></div>
+      </div>
+      <div>Baixa (até 0,25) · Média (0,26–0,75) · Alta (acima de 0,75)</div>
+    </div>
+    <label class="opcao" id="opcao-mun" hidden><input type="checkbox" id="ver-mun" checked> Mostrar limites dos municípios</label>
+  </div>
+
+  <div class="cartao">
+    <h2>Consulta por ponto</h2>
+    <form id="form">
+      <div><label for="lat">Latitude</label><input id="lat" inputmode="decimal" placeholder="-13,05"></div>
+      <div><label for="lon">Longitude</label><input id="lon" inputmode="decimal" placeholder="-55,90"></div>
+      <button class="botao" type="submit">Consultar</button>
+    </form>
+    <div class="acoes"><button class="botao sec" id="gps" type="button">Usar minha localização</button></div>
+    <p class="dica" id="dica-coord">Ou clique no mapa. Coordenadas em graus decimais.</p>
+    <div id="resultado"></div>
+    <p class="dica">Temp.: temperatura média do dia · Molh.: horas com umidade relativa ≥ 90% · Favor.: favorabilidade (0 a 1).</p>
+    <div class="aviso" id="aviso-uf" hidden></div>
+    <div class="aviso">Protótipo de pesquisa. A favorabilidade indica se o clima favorece a doença; não indica presença do fungo nem substitui a recomendação de um agrônomo.</div>
+  </div>
+</main>
+
+<section class="sobre">
+  <div class="cartao">
+    <h2>Sobre</h2>
+    <p>A favorabilidade climática à ferrugem asiática da soja (<i>Phakopsora pachyrhizi</i>) é calculada por um sistema de inferência fuzzy a partir da temperatura média diária e do molhamento foliar, estimado como o número de horas com umidade relativa igual ou superior a 90%. O resultado vai de 0 a 1 e é agrupado em três faixas: baixa (até 0,25), média (0,26 a 0,75) e alta (acima de 0,75).</p>
+    <p>A previsão do tempo vem do modelo IFS do ECMWF, na resolução de 0,1° (cerca de 11 km), rodada das 00 UTC, atualizada uma vez por dia. Os dias anteriores da curva não são medições: são a previsão de 24 horas feita em cada um desses dias (a previsão mais precisa que o modelo produz). A consulta por ponto usa a célula de 0,1° mais próxima dentro do estado (<span class="uf-nome"></span>). Os dias são contados em UTC (21h às 21h no horário de Brasília).</p>
+    <p>Previsões mais distantes são menos precisas: use os dias 4 a 7 como tendência.</p>
+    <p>Projeto de pós-doutorado na Faculdade de Ciências Aplicadas (FCA) da UNICAMP, em Limeira (SP), em parceria com o IFMT e a UFMT.</p>
+    <p><b>Fontes e créditos.</b> Este serviço usa dados e produtos do European Centre for Medium-Range Weather Forecasts (ECMWF), ECMWF Open Data, licença <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>; os dados foram processados (recorte, interpolação e cálculo da favorabilidade). Limites estaduais e municipais: IBGE. Mapa base: © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">colaboradores do OpenStreetMap</a>.</p>
+  </div>
+</section>
+<footer id="rodape"></footer>
+
+<script src="lib/leaflet.js"></script>
+<script>
+(function () {
+  "use strict";
+  const CORES = { Baixa: "#97C459", "Média": "#EF9F27", Alta: "#A32D2D" };
+  const el = id => document.getElementById(id);
+  let D = null, camada = null, marcador = null, diaAtivo = null, MUN = null, camadaMun = null;
+
+  // município que contém o ponto (teste par-ímpar nos anéis de cada polígono)
+  function dentroDoAnel(lon, lat, anel) {
+    let dentro = false;
+    for (let i = 0, j = anel.length - 1; i < anel.length; j = i++) {
+      const [xi, yi] = anel[i], [xj, yj] = anel[j];
+      if ((yi > lat) !== (yj > lat) && lon < (xj - xi) * (lat - yi) / (yj - yi) + xi) dentro = !dentro;
+    }
+    return dentro;
+  }
+  function municipioDoPonto(lat, lon) {
+    if (!MUN) return null;
+    for (const f of MUN.features) {
+      const g = f.geometry, pols = g.type === "Polygon" ? [g.coordinates] : g.type === "MultiPolygon" ? g.coordinates : [];
+      for (const pol of pols) {
+        let dentro = false;
+        pol.forEach(anel => { if (dentroDoAnel(lon, lat, anel)) dentro = !dentro; });
+        if (dentro) return f.properties.nome;
+      }
+    }
+    return null;
+  }
+
+  const mapa = L.map("mapa", { zoomSnap: 0.25 }).setView([-12, -58], 5);
+  mapa.createPane("favor").style.zIndex = 350;                   // camada de cores abaixo das linhas
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 13, attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">colaboradores do OpenStreetMap</a>' 
+  }).addTo(mapa);
+
+  const fmtData = s => { const [a, m, d] = s.split("-"); return `${d}/${m}`; };
+  const diaSemana = s => ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"][new Date(s + "T12:00:00Z").getUTCDay()];
+  const num = (v, c = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: c, maximumFractionDigits: c });
+  const faixa = f => f > D.faixas.limites[2] ? "Alta" : f > D.faixas.limites[1] ? "Média" : "Baixa";
+  const lerNum = s => parseFloat(String(s).trim().replace(",", "."));
+
+  function mostrarDia(data) {
+    const c = D.camadas.find(x => x.data === data);
+    if (!c) return;
+    diaAtivo = data;
+    if (camada) mapa.removeLayer(camada);
+    camada = L.imageOverlay(`${c.arquivo}?v=${D.rodada}`, D.limites_camada, { opacity: 1, interactive: false, pane: "favor" }).addTo(mapa);
+    document.querySelectorAll("#dias button").forEach(b => b.classList.toggle("ativo", b.dataset.data === data));
+  }
+
+  function celulaMaisProxima(lat, lon) {
+    const la = D.celulas.lat, lo = D.celulas.lon;
+    let melhor = -1, dmin = Infinity;
+    for (let k = 0; k < la.length; k++) {
+      const d = (la[k] - lat) ** 2 + (lo[k] - lon) ** 2;
+      if (d < dmin) { dmin = d; melhor = k; }
+    }
+    return Math.sqrt(dmin) <= 0.08 ? melhor : -1;     // ~ meia diagonal de uma célula de 0,1°
+  }
+
+  function curvaSVG(linhas) {
+    const W = 560, H = 250, x0 = 40, x1 = W - 14, y0 = 14, y1 = H - 40;
+    const n = linhas.length, x = i => x0 + (x1 - x0) * (n === 1 ? 0.5 : i / (n - 1)), y = v => y1 - (y1 - y0) * v;
+    const lim = D.faixas.limites, cores = D.faixas.cores;
+    let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Curva de favorabilidade de 14 dias">`;
+    for (let b = 0; b < 3; b++) s += `<rect x="${x0}" y="${y(lim[b + 1])}" width="${x1 - x0}" height="${y(lim[b]) - y(lim[b + 1])}" fill="${cores[b]}" fill-opacity="0.13"/>`;
+    [0, 0.25, 0.5, 0.75, 1].forEach(v => s += `<text x="${x0 - 6}" y="${y(v) + 4}" font-size="11.5" text-anchor="end" fill="#55615a">${num(v, 2)}</text>`);
+    [0.25, 0.75].forEach(v => s += `<line x1="${x0}" x2="${x1}" y1="${y(v)}" y2="${y(v)}" stroke="#8a948d" stroke-width="0.6"/>`);
+    const iHoje = linhas.findIndex(r => r.periodo === "previsão");
+    if (iHoje >= 0) s += `<line x1="${x(iHoje)}" x2="${x(iHoje)}" y1="${y0}" y2="${y1}" stroke="#55615a" stroke-dasharray="2 3"/><text x="${x(iHoje) + 4}" y="${y0 + 10}" font-size="11.5" fill="#55615a">hoje</text>`;
+    const caminho = idx => idx.filter(i => linhas[i].fav !== null).map((i, k) => `${k ? "L" : "M"}${x(i).toFixed(1)},${y(linhas[i].fav).toFixed(1)}`).join("");
+    const ant = linhas.map((r, i) => i).filter(i => linhas[i].periodo === "anterior");
+    const prev = linhas.map((r, i) => i).filter(i => linhas[i].periodo === "previsão");
+    if (ant.length && prev.length) prev.unshift(ant[ant.length - 1]);
+    s += `<path d="${caminho(ant)}" fill="none" stroke="#2b332e" stroke-width="2"/>`;
+    s += `<path d="${caminho(prev)}" fill="none" stroke="#2b332e" stroke-width="2" stroke-dasharray="6 4"/>`;
+    linhas.forEach((r, i) => {
+      s += `<text x="${x(i)}" y="${H - 18}" font-size="11.5" text-anchor="middle" fill="#55615a">${fmtData(r.data)}</text>`;
+      if (r.fav === null) return;
+      s += `<circle cx="${x(i)}" cy="${y(r.fav)}" r="4.5" fill="${CORES[faixa(r.fav)]}" stroke="#fff" stroke-width="1.2"><title>${fmtData(r.data)}: ${num(r.fav)} (${faixa(r.fav)})</title></circle>`;
+    });
+    s += `<text x="${x0}" y="${H - 3}" font-size="11.5" fill="#55615a">— dias anteriores   - - previsão</text>`;
+    return s + "</svg>";
+  }
+
+  function consultar(lat, lon) {
+    const res = el("resultado");
+    if (!isFinite(lat) || !isFinite(lon)) { res.innerHTML = `<p class="erro">Coordenadas inválidas.</p>`; return; }
+    if (marcador) mapa.removeLayer(marcador);
+    marcador = L.circleMarker([lat, lon], { radius: 7, color: "#fff", weight: 2, fillColor: "#1f2a24", fillOpacity: 1 }).addTo(mapa);
+    const k = celulaMaisProxima(lat, lon);
+    if (k < 0) { res.innerHTML = `<p class="erro">Ponto fora da área coberta (${D.estado.nome}).</p>`; return; }
+    const linhas = D.datas.map((data, i) => {
+      const f = D.favorabilidade_x1000[i][k], t = D.temperatura_x10[i][k], m = D.molhamento_h[i][k];
+      return { data, periodo: D.periodos[i], fav: f < 0 ? null : f / 1000, temp: t === -9999 ? null : t / 10, molh: m < 0 ? null : m };
+    });
+    const futuro = linhas.filter(r => r.periodo === "previsão" && r.fav !== null);
+    const altos = futuro.filter(r => faixa(r.fav) === "Alta").length;
+    const municipio = municipioDoPonto(lat, lon);
+    let html = `<div id="resumo">${municipio ? `<b>${municipio}</b> (${D.estado.sigla}) · ` : ""}ponto ${num(lat, 4)}, ${num(lon, 4)} · célula ${num(D.celulas.lat[k], 1)}, ${num(D.celulas.lon[k], 1)}<br>`;
+    html += altos ? `Favorabilidade <b style="color:${CORES.Alta}">alta</b> em ${altos} dos ${futuro.length} dias de previsão.` : `Sem dias de favorabilidade alta nos ${futuro.length} dias de previsão.`;
+    html += `</div><div id="curva">${curvaSVG(linhas)}</div>`;
+    html += `<table><thead><tr><th>Dia</th><th>Temp. (°C)</th><th>Molh. (h)</th><th>Favor.</th><th>Faixa</th></tr></thead><tbody>`;
+    linhas.forEach(r => {
+      const fx = r.fav === null ? null : faixa(r.fav);
+      html += `<tr class="${r.periodo === "previsão" ? "prev" : ""}"><td>${diaSemana(r.data)} ${fmtData(r.data)}${r.periodo === "previsão" ? " *" : ""}</td>` +
+        `<td>${r.temp === null ? "–" : num(r.temp, 1)}</td><td>${r.molh === null ? "–" : r.molh}</td>` +
+        `<td>${r.fav === null ? "–" : num(r.fav)}</td><td>${fx ? `<span class="chip" style="background:${CORES[fx]}">${fx}</span>` : "–"}</td></tr>`;
+    });
+    html += `</tbody></table><p class="dica">* previsão</p>`;
+    res.innerHTML = html;
+    el("lat").value = num(lat, 4); el("lon").value = num(lon, 4);
+    history.replaceState(null, "", `#${lat.toFixed(4)},${lon.toFixed(4)}`);
+  }
+
+  mapa.on("click", e => consultar(e.latlng.lat, e.latlng.lng));
+  el("form").addEventListener("submit", e => { e.preventDefault(); const la = lerNum(el("lat").value), lo = lerNum(el("lon").value); consultar(la, lo); if (isFinite(la) && isFinite(lo)) mapa.setView([la, lo], Math.max(mapa.getZoom(), 8)); });
+  el("gps").addEventListener("click", () => {
+    if (!navigator.geolocation) { el("resultado").innerHTML = `<p class="erro">Localização indisponível neste navegador.</p>`; return; }
+    navigator.geolocation.getCurrentPosition(
+      p => { consultar(p.coords.latitude, p.coords.longitude); mapa.setView([p.coords.latitude, p.coords.longitude], 9); },
+      () => { el("resultado").innerHTML = `<p class="erro">Não foi possível obter a localização.</p>`; });
+  });
+
+  fetch(`dados/dados.json?t=${Date.now()}`).then(r => r.json()).then(dados => {
+    D = dados;
+    document.querySelectorAll(".uf-nome").forEach(e => e.textContent = D.estado.nome);
+    document.title = `Favorabilidade à ferrugem asiática da soja — ${D.estado.nome}`;
+    if (D.estado.aviso) { el("aviso-uf").textContent = D.estado.aviso; el("aviso-uf").hidden = false; }
+    const la = D.celulas.lat, lo = D.celulas.lon, meio = Math.floor(la.length / 2);
+    el("lat").placeholder = num(la[meio], 2); el("lon").placeholder = num(lo[meio], 2);
+    el("dica-coord").textContent = `Ou clique no mapa. Coordenadas em graus decimais (ex.: ${num(la[meio], 2)} e ${num(lo[meio], 2)}).`;
+    el("sub").textContent = `Previsão do ECMWF de ${fmtData(D.rodada)}/${D.rodada.slice(0, 4)} (rodada 00 UTC) · próximos 7 dias e 7 dias anteriores`;
+    el("rodape").textContent = `Dados gerados em ${D.gerado_em.split(" ")[0].split("-").reverse().join("/")} às ${D.gerado_em.split(" ")[1]}.`;
+    const bot = el("dias");
+    D.camadas.forEach(c => {
+      const b = document.createElement("button");
+      b.type = "button"; b.dataset.data = c.data; b.textContent = `${diaSemana(c.data)} ${fmtData(c.data)}`;
+      b.addEventListener("click", () => mostrarDia(c.data));
+      bot.appendChild(b);
+    });
+    mapa.fitBounds(D.limites_camada, { padding: [6, 6] });
+    if (D.camadas.length) mostrarDia(D.camadas[0].data);
+    if (D.municipios) fetch(D.municipios).then(r => r.json()).then(g => {
+      MUN = g;
+      camadaMun = L.geoJSON(g, { style: { color: "#3a4540", weight: 0.5, opacity: 0.55, fill: false }, interactive: false }).addTo(mapa);
+      el("opcao-mun").hidden = false;
+      el("ver-mun").addEventListener("change", e => e.target.checked ? camadaMun.addTo(mapa) : mapa.removeLayer(camadaMun));
+      const h = location.hash.slice(1).split(",").map(Number);           // refaz a consulta do link já com o município
+      if (h.length === 2 && h.every(isFinite)) consultar(h[0], h[1]);
+    }).catch(() => {});
+    fetch(D.contorno || "dados/contorno.geojson").then(r => r.json()).then(g => L.geoJSON(g, { style: { color: "#1f2a24", weight: 1.2, fill: false }, interactive: false }).addTo(mapa)).catch(() => {});
+    const h = location.hash.slice(1).split(",").map(Number);
+    if (h.length === 2 && h.every(isFinite)) consultar(h[0], h[1]);
+  }).catch(() => { el("sub").textContent = "Não foi possível carregar os dados da previsão."; });
+})();
+</script>
+</body>
+</html>
